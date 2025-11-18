@@ -1,0 +1,24 @@
+# =============================================================================
+# Terraform Variables - Copy to terraform.tfvars and fill with your values
+# =============================================================================
+
+# AWS region where Bedrock will be deployed
+# Note: Bedrock is available in: us-east-1, us-west-2, eu-west-1, ap-southeast-1
+aws_region = "us-east-1"
+
+# Environment: dev, staging, or prod
+environment = "dev"
+
+# CloudWatch log retention in days
+log_retention_days = 30
+
+# Enable KMS encryption
+enable_encryption = true
+
+# Additional tags
+tags = {
+  Project     = "claude-code-bedrock"
+  Team        = "engineering"
+  CostCenter  = "engineering"
+  Owner       = "your-team@example.com"
+}
