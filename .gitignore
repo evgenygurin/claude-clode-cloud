@@ -39,6 +39,10 @@ docker-compose.override.yml
 *.key
 secrets/
 
+# Claude configuration (allow bedrock config)
+.claude/
+!.claude/bedrock.config.yaml
+
 # OS
 .DS_Store
 Thumbs.db

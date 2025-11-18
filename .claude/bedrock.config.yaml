@@ -1,0 +1,374 @@
+# =============================================================================
+# Claude Code + AWS Bedrock Integration Configuration
+# =============================================================================
+# Configuration for Claude Code IDE to work with AWS Bedrock
+# Enables seamless model access and token management
+#
+# Phase: WOR-9 - Claude Code Configuration
+# =============================================================================
+
+# Bedrock Model Configuration
+bedrock:
+  # AWS Region where Bedrock is deployed
+  region: us-east-1
+
+  # Available models for Claude Code
+  models:
+    # Claude 3.5 Sonnet - Recommended for most tasks
+    - id: claude-3-5-sonnet-20241022
+      bedrock_id: anthropic.claude-3-5-sonnet-20241022-v2:0
+      display_name: Claude 3.5 Sonnet
+      max_tokens: 200000
+      recommended: true
+      use_cases:
+        - general_coding
+        - complex_reasoning
+        - code_review
+        - documentation
+      cost_per_1k_tokens:
+        input: 0.003
+        output: 0.015
+
+    # Claude 3.5 Haiku - Fast and cheap for simple tasks
+    - id: claude-3-5-haiku-20241022
+      bedrock_id: anthropic.claude-3-5-haiku-20241022-v1:0
+      display_name: Claude 3.5 Haiku
+      max_tokens: 200000
+      recommended: false
+      use_cases:
+        - quick_edits
+        - simple_completions
+        - debugging
+        - testing
+      cost_per_1k_tokens:
+        input: 0.00080
+        output: 0.0024
+
+    # Claude 3 Opus - Most capable, slower
+    - id: claude-3-opus-20240229
+      bedrock_id: anthropic.claude-3-opus-20240229-v1:0
+      display_name: Claude 3 Opus
+      max_tokens: 200000
+      recommended: false
+      use_cases:
+        - deep_analysis
+        - research
+        - complex_architecture
+      cost_per_1k_tokens:
+        input: 0.015
+        output: 0.075
+
+# Proxy Server Configuration
+proxy:
+  # Proxy server runs locally to translate OpenAI API calls to Bedrock
+  enabled: true
+  host: localhost
+  port: 3000
+  protocol: http
+
+  # OpenAI-compatible endpoints provided by proxy
+  endpoints:
+    base_url: http://localhost:3000
+    chat_completions: /v1/chat/completions
+    models: /v1/models
+    health: /health
+    bedrock_models: /v1/bedrock/models
+
+# Authentication Methods (choose one)
+authentication:
+  # Method 1: AWS CLI credentials (default)
+  method: aws_cli
+  config:
+    # AWS credentials location
+    credentials_file: ~/.aws/credentials
+    config_file: ~/.aws/config
+    profile: default
+    region: us-east-1
+
+  # Method 2: IAM User Access Keys (for CI/CD)
+  # method: iam_user
+  # config:
+  #   access_key_id: ${AWS_ACCESS_KEY_ID}
+  #   secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  #   region: us-east-1
+
+  # Method 3: Temporary STS Credentials (short-lived)
+  # method: sts
+  # config:
+  #   role_arn: arn:aws:iam::ACCOUNT_ID:role/claude-code-bedrock-role
+  #   session_duration_seconds: 3600
+  #   external_id: optional-external-id
+
+  # Method 4: Federated Access (SSO)
+  # method: sso
+  # config:
+  #   sso_start_url: https://d-xxxx.awsapps.com/start
+  #   sso_region: us-east-1
+  #   sso_account_id: ACCOUNT_ID
+  #   sso_role_name: claude-code-bedrock
+
+# Token Management
+tokens:
+  # Track token usage for cost optimization
+  tracking_enabled: true
+  tracking_endpoint: http://localhost:3000/metrics
+
+  # Daily token limits (optional)
+  daily_limits:
+    enabled: false
+    input_tokens: 1000000
+    output_tokens: 500000
+
+  # Alert thresholds
+  alerts:
+    enabled: true
+    warning_threshold_percent: 80
+    alert_threshold_percent: 95
+
+  # Cost tracking
+  cost_tracking:
+    enabled: true
+    currency: USD
+    alert_on_budget_exceeded: true
+    monthly_budget: 100.0
+
+# Request Configuration
+requests:
+  # Default parameters for all requests
+  defaults:
+    temperature: 0.7
+    top_p: 0.9
+    max_tokens: 4096
+    timeout_seconds: 300
+
+  # Retry strategy
+  retries:
+    max_attempts: 3
+    initial_backoff_seconds: 1
+    max_backoff_seconds: 32
+    exponential_base: 2
+
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+    requests_per_hour: 3600
+
+# Logging Configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+  format: json
+  include_tokens: false
+  include_costs: true
+
+  # Log destinations
+  outputs:
+    - type: console
+    - type: file
+      path: ~/.claude/logs/bedrock.log
+      retention_days: 30
+      max_size_mb: 100
+
+  # Sensitive data masking
+  mask_sensitive_data: true
+  masked_fields:
+    - access_key
+    - secret_key
+    - password
+    - api_key
+
+# Cache Configuration
+cache:
+  enabled: true
+  type: memory
+  ttl_seconds: 3600
+
+  # Optional: Redis cache for distributed setups
+  # type: redis
+  # host: localhost
+  # port: 6379
+  # db: 0
+  # ttl_seconds: 3600
+
+# IDE Integration
+ide:
+  # Editor-specific settings
+  editors:
+    # Cursor IDE specific configuration
+    cursor:
+      enabled: true
+      auto_model_selection: true
+      context_window: 200000
+      preserve_context: true
+
+    # VSCode settings
+    vscode:
+      enabled: false
+      extension_id: claude-bedrock-extension
+
+  # Code completion settings
+  completion:
+    auto_complete: true
+    suggestion_delay_ms: 500
+    max_suggestions: 5
+
+  # Inline documentation
+  documentation:
+    enabled: true
+    inline_comments: true
+    markdown_formatting: true
+
+# Monitoring & Metrics
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: /metrics
+
+  # Health checks
+  health_checks:
+    enabled: true
+    interval_seconds: 30
+    bedrock_availability: true
+    proxy_connectivity: true
+
+  # Performance monitoring
+  performance:
+    track_latency: true
+    track_throughput: true
+    track_error_rate: true
+
+# Security Configuration
+security:
+  # SSL/TLS for proxy (production)
+  tls:
+    enabled: false
+    cert_file: /path/to/cert.pem
+    key_file: /path/to/key.pem
+
+  # API authentication for proxy
+  api_auth:
+    enabled: false
+    token_header: X-API-Key
+    tokens:
+      - token: your-api-token-here
+        description: Development token
+
+  # Request signing
+  sign_requests: true
+  signature_algorithm: aws4
+
+# Development Settings
+development:
+  # Mock mode for testing (doesn't call real Bedrock)
+  mock_mode: false
+
+  # Mock response for testing
+  mock_responses:
+    default: "This is a mock response for testing"
+
+  # Debug mode
+  debug: false
+  verbose_logging: false
+
+  # Local testing
+  test_mode: false
+  test_bedrock_connectivity: true
+
+# Advanced Settings
+advanced:
+  # Connection pooling
+  connection_pool:
+    min_size: 2
+    max_size: 10
+    idle_timeout_seconds: 300
+
+  # Async processing
+  async_processing: true
+  max_concurrent_requests: 5
+
+  # Stream responses for long outputs
+  streaming:
+    enabled: true
+    chunk_size_tokens: 256
+
+  # Custom headers
+  custom_headers:
+    User-Agent: claude-code-bedrock/1.0
+    X-Bedrock-Integration: true
+
+# Feature Flags
+features:
+  # Enable/disable experimental features
+  experimental:
+    token_counting: true
+    cost_prediction: true
+    model_auto_selection: true
+    context_compression: false
+
+# Notification Settings
+notifications:
+  enabled: true
+  channels:
+    # Console notifications
+    - type: console
+      events:
+        - error
+        - warning
+        - daily_summary
+
+    # File logging
+    - type: file
+      path: ~/.claude/notifications.log
+      events:
+        - all
+
+# Integration with other services
+integrations:
+  # Linear project tracking
+  linear:
+    enabled: false
+    api_key: ${LINEAR_API_KEY}
+    project_key: WOR
+    auto_log_tokens: false
+
+  # Slack notifications (optional)
+  slack:
+    enabled: false
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    notify_on_errors: true
+    notify_on_high_cost: true
+
+  # GitHub integration
+  github:
+    enabled: false
+    token: ${GITHUB_TOKEN}
+    auto_create_issues: false
+
+# Deployment Environments
+environments:
+  development:
+    region: us-east-1
+    debug: true
+    mock_mode: false
+
+  staging:
+    region: us-east-1
+    debug: false
+    mock_mode: false
+
+  production:
+    region: us-east-1
+    debug: false
+    mock_mode: false
+    tls:
+      enabled: true
+
+# Version Information
+version: "1.0"
+created_at: 2025-11-18
+updated_at: 2025-11-18
+phase: WOR-9
+status: active
