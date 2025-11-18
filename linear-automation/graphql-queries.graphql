@@ -1,0 +1,539 @@
+# ============================================================================
+# Linear GraphQL Queries for Cursor Agent
+# All queries needed for automation and integration
+# ============================================================================
+
+# Query 1: Get issue context when starting work
+# Used by Cursor Agent to understand what needs to be done
+query GetIssueContext($id: String!) {
+  issue(id: $id) {
+    id
+    identifier
+    title
+    description
+    priority {
+      value
+      name
+    }
+    status {
+      id
+      name
+      color
+      type
+    }
+    project {
+      id
+      name
+      key
+      description
+    }
+    team {
+      id
+      name
+      key
+    }
+    assignee {
+      id
+      name
+      email
+    }
+    labels {
+      nodes {
+        id
+        name
+        color
+        description
+      }
+    }
+    comments(first: 10) {
+      nodes {
+        id
+        body
+        createdAt
+        creator {
+          name
+          email
+        }
+      }
+    }
+    children(first: 50) {
+      nodes {
+        id
+        identifier
+        title
+        status {
+          name
+        }
+        priority {
+          value
+          name
+        }
+      }
+    }
+    parent {
+      id
+      identifier
+      title
+    }
+    estimate
+    completedAt
+    createdAt
+    updatedAt
+  }
+}
+
+# Query 2: Get all sub-tasks for a parent issue
+# Used to track progress on main WOR-7
+query GetSubtasks($parentId: String!) {
+  issues(
+    filter: {
+      parent: { id: { eq: $parentId } }
+    }
+    first: 50
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      status {
+        id
+        name
+      }
+      priority {
+        value
+        name
+      }
+      estimate
+      completedAt
+      updatedAt
+    }
+  }
+}
+
+# Query 3: Get issue by identifier (WOR-8, WOR-9, etc)
+# Convenient way to get issues by their key
+query GetIssueByIdentifier($identifier: String!) {
+  issues(
+    filter: {
+      identifier: { eq: $identifier }
+    }
+    first: 1
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      status {
+        id
+        name
+      }
+    }
+  }
+}
+
+# Query 4: Get team members
+# To assign issues to specific people if needed
+query GetTeamMembers($teamId: String!) {
+  team(id: $teamId) {
+    id
+    name
+    members(first: 50) {
+      nodes {
+        id
+        name
+        email
+        avatarUrl
+      }
+    }
+  }
+}
+
+# Query 5: Get project information
+# To understand project configuration
+query GetProjectInfo($projectId: String!) {
+  project(id: $projectId) {
+    id
+    name
+    key
+    description
+    icon
+    members(first: 50) {
+      nodes {
+        id
+        name
+        email
+      }
+    }
+    teams(first: 10) {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+}
+
+# Query 6: Search issues with filters
+# To find related issues and check for blockers
+query SearchIssues(
+  $teamId: String!
+  $statusName: String
+  $priorityValue: Int
+  $labelName: String
+) {
+  issues(
+    filter: {
+      team: { id: { eq: $teamId } }
+      status: { name: { contains: $statusName } }
+      priority: { value: { eq: $priorityValue } }
+      labels: { some: { name: { eq: $labelName } } }
+    }
+    first: 50
+    orderBy: { field: CREATED_AT, direction: DESC }
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      status {
+        name
+      }
+      priority {
+        name
+      }
+    }
+  }
+}
+
+# ============================================================================
+# MUTATIONS - Actions performed by Cursor Agent
+# ============================================================================
+
+# Mutation 1: Update issue progress
+# Called every 15 minutes to track progress
+mutation UpdateIssueProgress(
+  $id: String!
+  $progress: Float
+) {
+  issueUpdate(
+    id: $id
+    input: {
+      progress: $progress
+    }
+  ) {
+    issue {
+      id
+      identifier
+      progress
+      updatedAt
+    }
+  }
+}
+
+# Mutation 2: Change issue status
+# Used to move issues through workflow (Backlog → In Progress → Done)
+mutation UpdateIssueStatus(
+  $id: String!
+  $statusId: String!
+) {
+  issueUpdate(
+    id: $id
+    input: {
+      statusId: $statusId
+    }
+  ) {
+    issue {
+      id
+      identifier
+      status {
+        id
+        name
+      }
+      updatedAt
+    }
+  }
+}
+
+# Mutation 3: Add comment to issue
+# Used to post status updates and progress reports
+mutation AddCommentToIssue(
+  $issueId: String!
+  $body: String!
+) {
+  commentCreate(
+    input: {
+      issueId: $issueId
+      body: $body
+    }
+  ) {
+    comment {
+      id
+      body
+      createdAt
+      creator {
+        name
+      }
+    }
+  }
+}
+
+# Mutation 4: Assign issue to user
+# Used to assign work to Cursor Agent or team members
+mutation AssignIssue(
+  $id: String!
+  $assigneeId: String
+) {
+  issueUpdate(
+    id: $id
+    input: {
+      assigneeId: $assigneeId
+    }
+  ) {
+    issue {
+      id
+      identifier
+      assignee {
+        name
+        email
+      }
+    }
+  }
+}
+
+# Mutation 5: Add labels to issue
+# Used to add status labels (in-progress, blocked, etc)
+mutation AddLabelsToIssue(
+  $id: String!
+  $labelIds: [String!]!
+) {
+  issueUpdate(
+    id: $id
+    input: {
+      labelIds: $labelIds
+    }
+  ) {
+    issue {
+      id
+      identifier
+      labels {
+        nodes {
+          name
+        }
+      }
+    }
+  }
+}
+
+# Mutation 6: Create sub-issue
+# Used to create sub-tasks programmatically if needed
+mutation CreateSubIssue(
+  $parentId: String!
+  $title: String!
+  $description: String!
+  $teamId: String!
+) {
+  issueCreate(
+    input: {
+      parentId: $parentId
+      title: $title
+      description: $description
+      teamId: $teamId
+    }
+  ) {
+    issue {
+      id
+      identifier
+      title
+      status {
+        name
+      }
+    }
+  }
+}
+
+# Mutation 7: Update issue with multiple fields
+# Used for comprehensive issue updates
+mutation UpdateIssueComprehensive(
+  $id: String!
+  $title: String
+  $description: String
+  $statusId: String
+  $progress: Float
+  $estimate: Int
+) {
+  issueUpdate(
+    id: $id
+    input: {
+      title: $title
+      description: $description
+      statusId: $statusId
+      progress: $progress
+      estimate: $estimate
+    }
+  ) {
+    issue {
+      id
+      identifier
+      title
+      status {
+        name
+      }
+      progress
+      estimate
+    }
+  }
+}
+
+# ============================================================================
+# SUBSCRIPTIONS - Real-time updates
+# ============================================================================
+
+# Subscription 1: Watch for issue updates
+# Used for real-time monitoring of issue changes
+subscription OnIssueUpdate($id: String!) {
+  issueUpdated(id: $id) {
+    issue {
+      id
+      identifier
+      title
+      status {
+        name
+      }
+      progress
+      updatedAt
+    }
+  }
+}
+
+# Subscription 2: Watch for comments on issue
+# Track when others comment on active task
+subscription OnIssueCommentCreated($issueId: String!) {
+  commentCreated(filter: { issueId: $issueId }) {
+    comment {
+      id
+      body
+      createdAt
+      creator {
+        name
+        email
+      }
+    }
+  }
+}
+
+# ============================================================================
+# Helper Queries - Used for specific scenarios
+# ============================================================================
+
+# Get all issues in "In Progress" status
+# Useful for finding active tasks
+query GetInProgressIssues($teamId: String!) {
+  issues(
+    filter: {
+      team: { id: { eq: $teamId } }
+      status: { name: { eq: "In Progress" } }
+    }
+    first: 50
+    orderBy: { field: UPDATED_AT, direction: DESC }
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      progress
+      updatedAt
+    }
+  }
+}
+
+# Get all issues marked as "blocked"
+# Useful for identifying blockers
+query GetBlockedIssues($teamId: String!) {
+  issues(
+    filter: {
+      team: { id: { eq: $teamId } }
+      labels: { some: { name: { eq: "blocked" } } }
+    }
+    first: 50
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      priority {
+        name
+      }
+      updatedAt
+    }
+  }
+}
+
+# Get issues with high priority
+# Useful for prioritizing work
+query GetHighPriorityIssues($teamId: String!) {
+  issues(
+    filter: {
+      team: { id: { eq: $teamId } }
+      priority: { value: { lte: 2 } }
+    }
+    first: 50
+    orderBy: { field: CREATED_AT, direction: DESC }
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      priority {
+        value
+        name
+      }
+    }
+  }
+}
+
+# Get issues created in last 24 hours
+# Useful for finding newly created work
+query GetRecentIssues($teamId: String!) {
+  issues(
+    filter: {
+      team: { id: { eq: $teamId } }
+      createdAt: { gte: "2024-01-01T00:00:00Z" }
+    }
+    first: 50
+    orderBy: { field: CREATED_AT, direction: DESC }
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      createdAt
+    }
+  }
+}
+
+# ============================================================================
+# Example Variables for Queries
+# ============================================================================
+
+# For GetIssueContext and others:
+# {
+#   "id": "210a98c2-d08c-4ac0-a918-feccd34e8670"
+# }
+
+# For AddCommentToIssue:
+# {
+#   "issueId": "210a98c2-d08c-4ac0-a918-feccd34e8670",
+#   "body": "🤖 Cursor Agent: Starting work on this task..."
+# }
+
+# For UpdateIssueProgress:
+# {
+#   "id": "210a98c2-d08c-4ac0-a918-feccd34e8670",
+#   "progress": 0.5
+# }
+
+# For GetSubtasks:
+# {
+#   "parentId": "210a98c2-d08c-4ac0-a918-feccd34e8670"
+# }
+
