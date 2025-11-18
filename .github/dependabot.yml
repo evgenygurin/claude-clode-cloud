@@ -1,0 +1,176 @@
+# Dependabot Configuration
+# Phase: WOR-13 - CI/CD Pipeline
+# Purpose: Automated dependency updates and security patching
+
+version: 2
+
+updates:
+  # =========================================================================
+  # npm Dependencies
+  # =========================================================================
+  - package-ecosystem: "npm"
+    directory: "/"
+
+    # Check for updates daily
+    schedule:
+      interval: "daily"
+      time: "03:00"
+      timezone: "UTC"
+
+    # Create pull requests
+    pull-requests:
+      enabled: true
+
+    # Commit message configuration
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+
+    # Group updates
+    grouping:
+      enabled: true
+      patterns:
+        - "^@aws-sdk/(.*)$"  # Group AWS SDK updates
+        - "^@types/(.*)$"    # Group TypeScript types
+        - "^eslint(.*)$"     # Group ESLint packages
+
+    # Auto-merge safe updates
+    auto-merge:
+      enabled: true
+      when: "dependency-bot-only"
+      allow:
+        - "patch"
+        - "minor"
+      disallow:
+        - "major"
+
+    # Rebase strategy
+    rebase-strategy: "auto"
+
+    # Allow updates
+    allow:
+      - dependency-type: "all"
+
+    # Ignore certain versions
+    ignore:
+      # Example: ignore specific versions
+      # - dependency-name: "package-name"
+      #   versions: ["*"]
+
+    # PR settings
+    labels:
+      - "dependencies"
+      - "automated"
+
+    reviewers:
+      # Add reviewers if needed
+      # - "@username"
+
+    assignees:
+      # Add assignees if needed
+      # - "@username"
+
+  # =========================================================================
+  # Docker
+  # =========================================================================
+  - package-ecosystem: "docker"
+    directory: "/"
+
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+
+    pull-requests:
+      enabled: true
+
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"
+
+    auto-merge:
+      enabled: true
+      when: "dependency-bot-only"
+      allow:
+        - "patch"
+        - "minor"
+
+    labels:
+      - "docker"
+      - "automated"
+
+  # =========================================================================
+  # GitHub Actions
+  # =========================================================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "UTC"
+
+    pull-requests:
+      enabled: true
+
+    commit-message:
+      prefix: "ci(actions)"
+      include: "scope"
+
+    auto-merge:
+      enabled: true
+      when: "dependency-bot-only"
+      allow:
+        - "patch"
+        - "minor"
+
+    labels:
+      - "ci/cd"
+      - "automated"
+
+# ============================================================================
+# Dependabot Configuration Notes
+# ============================================================================
+#
+# How it works:
+# 1. Dependabot scans dependencies on schedule
+# 2. Creates pull requests for updates
+# 3. Optionally auto-merges safe updates (patch/minor)
+# 4. Sends notifications about updates
+#
+# Security Benefits:
+# - Automatic security patch deployment
+# - Fast response to CVEs
+# - Reduced maintenance burden
+# - Consistent update cadence
+#
+# Update Strategy:
+# - Daily npm checks (smaller ecosystem)
+# - Weekly Docker base image checks
+# - Weekly GitHub Actions checks
+# - Auto-merge patch and minor versions
+# - Manual review for major versions
+#
+# Configuration Tips:
+# - Adjust frequency based on needs
+# - Group related updates to reduce PR noise
+# - Auto-merge only low-risk updates
+# - Keep PR labels consistent
+# - Use assignees for accountability
+#
+# Disabling Temporarily:
+# If you need to temporarily disable Dependabot:
+# 1. Comment out the package-ecosystem entries
+# 2. Dependabot will stop creating PRs
+# 3. Re-enable by uncommenting entries
+#
+# Testing Auto-Merge:
+# The auto-merge feature:
+# - Only works when all checks pass
+# - Won't merge if there are conflicts
+# - Respects branch protection rules
+# - Can be overridden by manual action
+#

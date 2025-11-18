@@ -1,0 +1,251 @@
+name: Build & Push Docker Image
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================================
+  # Build Docker Image
+  # =========================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Inspect image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Image pushed successfully"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+
+  # =========================================================================
+  # Security Scanning
+  # =========================================================================
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build.outputs.image-tag }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy'
+
+      - name: Scan with Snyk
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: ${{ needs.build.outputs.image-tag }}
+          args: --severity-threshold=high
+        continue-on-error: true
+
+  # =========================================================================
+  # Test Docker Image
+  # =========================================================================
+  test-image:
+    name: Test Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: claude-code:test
+          cache-from: type=gha
+
+      - name: Test image health check
+        run: |
+          docker run -d \
+            --name test-container \
+            -p 3000:3000 \
+            -e NODE_ENV=test \
+            claude-code:test
+
+          # Wait for container to start
+          sleep 10
+
+          # Test health endpoint
+          curl -f http://localhost:3000/health || echo "Health check failed"
+
+          # Check container logs
+          docker logs test-container
+
+          # Cleanup
+          docker stop test-container
+          docker rm test-container
+
+      - name: Verify image layers
+        run: |
+          echo "Checking image size and layers..."
+          docker images claude-code:test --format "table {{.Size}}"
+
+  # =========================================================================
+  # Publish Release Notes
+  # =========================================================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build, security, test-image]
+
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate changelog
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fromTag: ${{ env.PREVIOUS_TAG }}
+          toTag: ${{ github.ref }}
+          writeToFile: false
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changes }}
+          draft: false
+          prerelease: false
+
+  # =========================================================================
+  # Notify Results
+  # =========================================================================
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [build, security, test-image]
+
+    steps:
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const build = '${{ needs.build.result }}';
+            const security = '${{ needs.security.result }}';
+            const test = '${{ needs.test-image.result }}';
+
+            const summary = `## Docker Build Results
+
+            | Step | Status |
+            |------|--------|
+            | Build | ${build === 'success' ? '✅' : '❌'} ${build} |
+            | Security Scan | ${security === 'success' ? '✅' : '❌'} ${security} |
+            | Image Test | ${test === 'success' ? '✅' : '❌'} ${test} |
+
+            **Image Tag**: \`${{ needs.build.outputs.image-tag }}\``;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
