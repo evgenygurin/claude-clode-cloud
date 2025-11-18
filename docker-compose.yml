@@ -1,0 +1,33 @@
+# ============================================================================
+# Docker Compose for Local Development
+# ============================================================================
+
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: claude-code-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_PROFILE=${AWS_PROFILE:-}
+      - CLAUDE_CODE_USE_BEDROCK=1
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-global.anthropic.claude-sonnet-4-5-20250929-v1:0}
+      - ANTHROPIC_SMALL_FAST_MODEL=${ANTHROPIC_SMALL_FAST_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}
+    volumes:
+      # Mount AWS credentials (if using local config)
+      - ${HOME}/.aws:/home/appuser/.aws:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

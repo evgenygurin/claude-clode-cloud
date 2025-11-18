@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-code-bedrock"
+version = "1.0.0"
+description = "Claude Code AWS Bedrock Integration for Cursor IDE"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Claude Code Bedrock Team"}
+]
+keywords = ["claude", "bedrock", "aws", "cursor", "llm", "gateway"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "boto3>=1.34.0",
+    "botocore>=1.34.0",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "httpx>=0.26.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.1",
+    "structlog>=24.1.0",
+    "typing-extensions>=4.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.1.9",
+    "mypy>=1.8.0",
+    "black>=24.1.0",
+    "isort>=5.13.0",
+    "pre-commit>=3.6.0",
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.5.0",
+]
+
+[project.scripts]
+claude-gateway = "src.gateway.main:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
