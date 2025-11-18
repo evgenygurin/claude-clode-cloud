@@ -1,0 +1,65 @@
+# Docker image optimization - exclude unnecessary files
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Dependencies (will be installed in image)
+node_modules
+npm-debug.log
+yarn-error.log
+.yarn
+
+# Development
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+.eslintcache
+.prettierignore
+
+# Build artifacts (will be rebuilt)
+dist
+build
+coverage
+.next
+out
+
+# Documentation
+README.md
+docs/
+*.md
+
+# CI/CD
+.github
+.circleci
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Testing
+__tests__
+__mocks__
+*.test.ts
+*.spec.ts
+jest.config.js
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker
+
+# Project files
+*.log
+.cache
+.turbo
+
+# Platform specific
+Thumbs.db
+.DS_Store

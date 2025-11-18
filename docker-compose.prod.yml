@@ -1,0 +1,290 @@
+# Docker Compose for Production Environment
+# Phase: WOR-12 - Docker Containerization
+# Purpose: Production-grade deployment with security, logging, and monitoring
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # Claude Code + Bedrock Proxy Server (Production)
+  # =========================================================================
+  claude-code:
+    image: claude-code:latest
+    # Build from registry in production (pre-built image)
+    # image: registry.example.com/claude-code:v1.0.0
+
+    container_name: claude-code-bedrock-proxy
+
+    # Restart policy: always restart on failure
+    restart: always
+
+    # Port mappings (internal only, use reverse proxy in production)
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    # Environment variables (use secrets in Kubernetes)
+    environment:
+      # AWS Configuration (from secrets in production)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID must be set}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY must be set}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+
+      # Node environment
+      NODE_ENV: production
+      LOG_LEVEL: warn
+
+      # Bedrock configuration
+      BEDROCK_REGION: ${AWS_REGION:-us-east-1}
+
+      # Gateway configuration
+      ENABLE_GATEWAY: "true"
+      GATEWAY_CACHE_TTL: "7200"
+      GATEWAY_COST_OPTIMIZATION: "true"
+      GATEWAY_ENABLE_FAILOVER: "true"
+
+      # Security
+      API_AUTH_ENABLED: "true"
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:?API_AUTH_TOKEN must be set}
+
+      # Monitoring
+      ENABLE_PROMETHEUS: "true"
+      PROMETHEUS_PORT: "9090"
+
+    # Volume mounts (read-only for security)
+    volumes:
+      # Configuration (read-only)
+      - ./.claude/bedrock.config.yaml:/app/.claude/bedrock.config.yaml:ro
+
+      # Logs (persist to host)
+      - /var/log/claude-code:/app/logs
+
+      # Secrets (if using volumes for secrets)
+      # - /run/secrets/aws_credentials:/app/.aws/credentials:ro
+
+    # Health check (critical for orchestration)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer ${API_AUTH_TOKEN}", "http://localhost:3000/health"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
+    # Logging configuration (structured logging)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+        labels: "service=claude-code,environment=production"
+
+    # Resource limits (production)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+
+    # Read-only root filesystem
+    read_only: true
+
+    # Temporary filesystem for writable directories
+    tmpfs:
+      - /tmp
+      - /app/logs
+
+    # Capabilities (drop unnecessary)
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+  # =========================================================================
+  # Reverse Proxy (Nginx) - Production recommendation
+  # =========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: claude-code-reverse-proxy
+
+    restart: always
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      # Configuration
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/conf.d:/etc/nginx/conf.d:ro
+
+      # SSL certificates
+      - ./docker/certs:/etc/nginx/certs:ro
+
+      # Logs
+      - /var/log/nginx:/var/log/nginx
+
+    depends_on:
+      claude-code:
+        condition: service_healthy
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # =========================================================================
+  # Prometheus (Monitoring)
+  # =========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: claude-prometheus
+
+    restart: always
+
+    ports:
+      - "127.0.0.1:9090:9090"
+
+    volumes:
+      # Configuration
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+      # Data persistence
+      - prometheus-data:/prometheus
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+
+    depends_on:
+      claude-code:
+        condition: service_healthy
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =========================================================================
+  # Alertmanager (Alert handling)
+  # =========================================================================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: claude-alertmanager
+
+    restart: always
+
+    ports:
+      - "127.0.0.1:9093:9093"
+
+    volumes:
+      # Configuration
+      - ./docker/alertmanager.yml:/etc/alertmanager/config.yml:ro
+
+      # Data persistence
+      - alertmanager-data:/alertmanager
+
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =========================================================================
+  # Grafana (Metrics visualization)
+  # =========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: claude-grafana
+
+    restart: always
+
+    ports:
+      - "127.0.0.1:3001:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION: "false"
+
+    volumes:
+      # Configuration
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+
+      # Data persistence
+      - grafana-data:/var/lib/grafana
+
+    depends_on:
+      - prometheus
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# =========================================================================
+# Volumes (persistent storage)
+# =========================================================================
+volumes:
+  prometheus-data:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+
+  alertmanager-data:
+    driver: local
+
+  grafana-data:
+    driver: local
+
+# =========================================================================
+# Networks
+# =========================================================================
+networks:
+  default:
+    name: claude-code-prod-network
+    driver: bridge
+
+# =========================================================================
+# Usage for Production
+# =========================================================================
+# Start all services:
+#   export AWS_REGION=us-east-1
+#   export AWS_ACCESS_KEY_ID=AKIA...
+#   export AWS_SECRET_ACCESS_KEY=...
+#   export API_AUTH_TOKEN=your-secret-token
+#   export GRAFANA_PASSWORD=secure-password
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# View logs:
+#   docker-compose -f docker-compose.prod.yml logs -f claude-code
+#
+# Monitor status:
+#   curl -H "Authorization: Bearer ${API_AUTH_TOKEN}" http://localhost:3000/health
+#
+# Access dashboards:
+#   Grafana: http://localhost:3001
+#   Prometheus: http://localhost:9090
+#
+# Stop all services:
+#   docker-compose -f docker-compose.prod.yml down
+#
+# Update image:
+#   docker-compose -f docker-compose.prod.yml pull
+#   docker-compose -f docker-compose.prod.yml up -d
