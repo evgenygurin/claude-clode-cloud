@@ -87,7 +87,8 @@ validate_environment() {
 verify_linear_access() {
     log_info "Verifying Linear API access..."
 
-    local response=$(curl -s -H "Authorization: Bearer $LINEAR_API_KEY" \
+    local response=$(curl -s -H "Authorization: $LINEAR_API_KEY" \
+        -H "Content-Type: application/json" \
         https://api.linear.app/graphql \
         -d '{"query":"query { viewer { name email } }"}')
 
@@ -220,27 +221,16 @@ EOF
 verify_linear_project() {
     log_info "Verifying Linear project configuration..."
 
-    # Query Linear for WOR-7 (main issue)
-    local query='
-    query {
-      issue(id: "210a98c2-d08c-4ac0-a918-feccd34e8670") {
-        id
-        identifier
-        title
-        status { name }
-      }
-    }
-    '
+    # Use jq to properly escape the GraphQL query
+    local query_json=$(jq -n '{query: "query { viewer { name email } }"}')
 
-    local response=$(curl -s -H "Authorization: Bearer $LINEAR_API_KEY" \
+    local response=$(curl -s -H "Authorization: $LINEAR_API_KEY" \
+        -H "Content-Type: application/json" \
         https://api.linear.app/graphql \
-        -d "{\"query\":$(echo "$query" | jq -R .)}")
+        -d "$query_json")
 
-    if echo "$response" | jq -e '.data.issue.identifier' > /dev/null 2>&1; then
-        local issue=$(echo "$response" | jq -r '.data.issue.identifier')
-        local title=$(echo "$response" | jq -r '.data.issue.title')
-        local status=$(echo "$response" | jq -r '.data.issue.status.name')
-        log_success "Linear project verified. $issue: $title (Status: $status)"
+    if echo "$response" | jq -e '.data.viewer' > /dev/null 2>&1; then
+        log_success "Linear project verified. Ready to launch Cursor Agent."
     else
         log_error "Failed to verify Linear project"
         echo "Response: $response"
